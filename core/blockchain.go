@@ -45,6 +45,7 @@ func generateGenesisBlock() {
 	once.Do(func() {
 		bc = &Blockchain{}
 		bc.AddBlock("Genesis Block")
+		time.Sleep(1 * time.Second)
 	})
 }
 

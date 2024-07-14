@@ -2,12 +2,13 @@ package main
 
 import (
 	"blockchain/core"
+	"time"
 )
 
 func main() {
 	chain := core.GetBlockchain()
-	chain.AddBlock("Genesis Block")
-	chain.AddBlock("Second Block")
-	chain.AddBlock("Third Block")
-	chain.ShowBlocks()
+	for {
+		chain.AddBlock("New Block")
+		time.Sleep(1 * time.Second)
+	}
 }
