@@ -80,6 +80,7 @@ func GetBlockchain() *Blockchain {
 	return bc
 }
 
+// getBlockNumber returns previous blockHash
 func (bc *Blockchain) getPrevHash() string {
 	if len(GetBlockchain().blocks) > 0 {
 		return GetBlockchain().blocks[len(GetBlockchain().blocks)-1].hash
@@ -87,6 +88,7 @@ func (bc *Blockchain) getPrevHash() string {
 	return "First Block"
 }
 
+// getBlockNumber returns current blockNo
 func (bc *Blockchain) getBlockNumber() big.Int {
 	if len(GetBlockchain().blocks) > 0 {
 		prevBlockNo := GetBlockchain().blocks[len(GetBlockchain().blocks)-1].number
@@ -97,6 +99,7 @@ func (bc *Blockchain) getBlockNumber() big.Int {
 	return *big.NewInt(1)
 }
 
+// ShowBlocks shows blockData in block
 func (bc *Blockchain) ShowBlocks() {
 	for _, block := range GetBlockchain().blocks {
 		fmt.Printf("blockNo: %v\n", block.number.String())
