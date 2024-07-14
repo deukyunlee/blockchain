@@ -1,33 +1,41 @@
 package core
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"github.com/go-playground/validator"
 	"math/big"
+	"strconv"
 	"sync"
 	"time"
 )
 
-type block struct {
-	number    big.Int   `validate:"required"`
-	timeStamp time.Time `validate:"required"`
-	hash      string    `validate:"required"`
-	prevHash  string    `validate:"required"`
-	data      string    `validate:"required"`
+type Block struct {
+	Number    big.Int   `validate:"required"`
+	TimeStamp time.Time `validate:"required"`
+	Hash      []byte    `validate:"required"`
+	PrevHash  []byte    `validate:"required"`
+	Data      string    `validate:"required"`
+	Nonce     uint64    `validate:"required"`
 }
 
 type Blockchain struct {
-	blocks []*block
+	Blocks []*Block
+}
+
+type ProofOfWork struct {
+	Block  *Block
+	Target *big.Int
 }
 
 var bc *Blockchain
 var once sync.Once
-var errNotValid = errors.New("can't add this block")
+var errNotValid = errors.New("can't add this Block")
 
-func (bc *Blockchain) validateStructure(newBlock block) error {
+const InitialNonce = uint64(0)
+
+// validateStructure validates Block struct
+func (bc *Blockchain) validateStructure(newBlock Block) error {
 	fmt.Println(newBlock)
 	validate := validator.New()
 
@@ -41,6 +49,7 @@ func (bc *Blockchain) validateStructure(newBlock block) error {
 	return nil
 }
 
+// generateGenesisBlock creates Genesis Block only once
 func generateGenesisBlock() {
 	once.Do(func() {
 		bc = &Blockchain{}
@@ -49,6 +58,7 @@ func generateGenesisBlock() {
 	})
 }
 
+// AddBlock appends new Block to Blocks only if struct is validated
 func (bc *Blockchain) AddBlock(data string) {
 	prevHash := bc.getPrevHash()
 	blockNo := bc.getBlockNumber()
@@ -59,21 +69,27 @@ func (bc *Blockchain) AddBlock(data string) {
 	if isValidated != nil {
 		fmt.Println("Block validation failed!")
 	} else {
-		bc.blocks = append(GetBlockchain().blocks, newBlock)
+		bc.Blocks = append(GetBlockchain().Blocks, newBlock)
 	}
 }
 
-func newBlock(blockNo big.Int, data string, prevHash string) *block {
-	newBlock := &block{blockNo, time.Now(), "", prevHash, data}
-	newBlock.calculateHash()
-	return newBlock
+// newBlock calculates Hash and create new struct
+func newBlock(blockNo big.Int, data string, prevHash []byte) *Block {
+	block := &Block{blockNo, time.Now(), []byte{}, prevHash, data, InitialNonce}
+	//newBlock.calculateHash()
+	pow := NewProofOfWork(block)
+
+	block.Nonce, block.Hash = pow.Run()
+	return block
 }
 
-func (b *block) calculateHash() {
-	hash := sha256.Sum256([]byte(b.data + b.prevHash))
-	b.hash = hex.EncodeToString(hash[:])
-}
+//// calculateHash calculates hash using sha256
+//func (b *Block) calculateHash() {
+//	hash := sha256.Sum256([]byte(b.Data + b.PrevHash))
+//	b.Hash = hash[:]
+//}
 
+// GetBlockchain returns BlockChain struct which is list of Blocks, and generateGenesisBlock if there is no Data
 func GetBlockchain() *Blockchain {
 	if bc == nil {
 		generateGenesisBlock()
@@ -82,17 +98,17 @@ func GetBlockchain() *Blockchain {
 }
 
 // getBlockNumber returns previous blockHash
-func (bc *Blockchain) getPrevHash() string {
-	if len(GetBlockchain().blocks) > 0 {
-		return GetBlockchain().blocks[len(GetBlockchain().blocks)-1].hash
+func (bc *Blockchain) getPrevHash() []byte {
+	if len(GetBlockchain().Blocks) > 0 {
+		return GetBlockchain().Blocks[len(GetBlockchain().Blocks)-1].Hash
 	}
-	return "First Block"
+	return []byte("First Block")
 }
 
 // getBlockNumber returns current blockNo
 func (bc *Blockchain) getBlockNumber() big.Int {
-	if len(GetBlockchain().blocks) > 0 {
-		prevBlockNo := GetBlockchain().blocks[len(GetBlockchain().blocks)-1].number
+	if len(GetBlockchain().Blocks) > 0 {
+		prevBlockNo := GetBlockchain().Blocks[len(GetBlockchain().Blocks)-1].Number
 		var nextBlockNo big.Int
 		nextBlockNo.Add(&prevBlockNo, big.NewInt(1))
 		return nextBlockNo
@@ -100,13 +116,16 @@ func (bc *Blockchain) getBlockNumber() big.Int {
 	return *big.NewInt(1)
 }
 
-// ShowBlocks shows blockData in block
+// ShowBlocks shows blockData in Block
 func (bc *Blockchain) ShowBlocks() {
-	for _, block := range GetBlockchain().blocks {
-		fmt.Printf("blockNo: %v\n", block.number.String())
-		fmt.Printf("TimeStamp: %v\n", block.timeStamp)
-		fmt.Printf("Data: %s\n", block.data)
-		fmt.Printf("Hash: %s\n", block.hash)
-		fmt.Printf("Prev Hash: %s\n", block.prevHash)
+	for _, block := range GetBlockchain().Blocks {
+		pow := NewProofOfWork(block)
+		fmt.Printf("blockNo: %v\n", block.Number.String())
+		fmt.Printf("TimeStamp: %v\n", block.TimeStamp)
+		fmt.Printf("Data: %s\n", block.Data)
+		fmt.Printf("Hash: %x\n", block.Hash)
+		fmt.Printf("Prev Hash: %x\n", block.PrevHash)
+		fmt.Printf("Nonce: %d\n", block.Nonce)
+		fmt.Printf("is Validated: %s\n", strconv.FormatBool(pow.Validate()))
 	}
 }
