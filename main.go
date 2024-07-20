@@ -1,20 +1,20 @@
 package main
 
 import (
+	"blockchain/cli"
 	"blockchain/core"
-	"time"
+	"github.com/boltdb/bolt"
 )
 
 func main() {
 	chain := core.GetBlockchain()
-	for {
-		chain.AddBlock("New Block")
-		time.Sleep(1 * time.Second)
+	defer func(Db *bolt.DB) {
+		err := Db.Close()
+		if err != nil {
 
-		if len(chain.Blocks) > 10 {
-			break
 		}
-	}
+	}(chain.Db)
 
-	chain.ShowBlocks()
+	commandLine := cli.Cli{Bc: chain}
+	commandLine.Active()
 }
