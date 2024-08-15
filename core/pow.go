@@ -30,7 +30,7 @@ func (pow *ProofOfWork) prepareData(nonce int) []byte {
 	data := bytes.Join(
 		[][]byte{
 			[]byte(pow.block.PrevHash),
-			[]byte(pow.block.Data),
+			pow.block.HashTransactions(),
 			util.IntToHex(int64(pow.block.TimeStamp)),
 			util.IntToHex(int64(nonce)),
 		},
@@ -72,4 +72,16 @@ func (pow *ProofOfWork) Validate() bool {
 
 	isValid := hashInt.Cmp(pow.target) == -1
 	return isValid
+}
+
+// HashTransactions hashes transactions
+func (b *Block) HashTransactions() []byte {
+	var txHashes [][]byte
+	var txHash [32]byte
+
+	for _, tx := range b.Transactions {
+		txHashes = append(txHashes, tx.GetHash())
+	}
+	txHash = sha256.Sum256(bytes.Join(txHashes, []byte{}))
+	return txHash[:]
 }
