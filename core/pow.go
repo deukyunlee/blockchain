@@ -4,14 +4,21 @@ import (
 	"blockchain/util"
 	"bytes"
 	"crypto/sha256"
+	"encoding/gob"
 	"fmt"
+	"log"
 	"math"
 	"math/big"
 )
 
+type ProofOfWork struct {
+	block  *Block
+	target *big.Int
+}
+
 // TargetBits is difficulty to mine a Block in POW
 const TargetBits = 6
-const MaxNonce = math.MaxUint64
+const MaxNonce = math.MaxInt
 
 // NewProofOfWork builds a new ProofOfWork
 func NewProofOfWork(b *Block) *ProofOfWork {
@@ -21,40 +28,39 @@ func NewProofOfWork(b *Block) *ProofOfWork {
 }
 
 // prepareData prepares Data to calculate Hash in order to get Nonce
-func (pow *ProofOfWork) prepareData(nonce uint64) []byte {
-	return bytes.Join(
+func (pow *ProofOfWork) prepareData(nonce int) []byte {
+	data := bytes.Join(
 		[][]byte{
-			[]byte(pow.Block.PrevHash),
-			[]byte(pow.Block.Data),
-			util.UintToHex(uint64(pow.Block.TimeStamp.UnixNano())),
-			util.UintToHex(TargetBits),
-			util.UintToHex(nonce),
-		}, []byte{},
+			[]byte(pow.block.PrevHash),
+			pow.block.HashTransactions(),
+			util.IntToHex(int64(pow.block.TimeStamp)),
+			util.IntToHex(int64(TargetBits)),
+			util.IntToHex(int64(nonce)),
+		},
+		[]byte{},
 	)
+	return data
 }
 
 // Run compares target and hashed data and mine block.
 // If calculated hash is smaller than target, the process terminates
-func (pow *ProofOfWork) Run() (uint64, []byte) {
+func (pow *ProofOfWork) Run() (int, []byte) {
 	var hashInt big.Int
 	var hash [32]byte
-
-	nonce := uint64(0)
-
+	nonce := 0
 	for nonce < MaxNonce {
 		data := pow.prepareData(nonce)
 		hash = sha256.Sum256(data)
-
 		fmt.Printf("\r%x", hash)
 
 		hashInt.SetBytes(hash[:])
-		if hashInt.Cmp(pow.Target) == -1 {
+		if hashInt.Cmp(pow.target) == -1 {
+			fmt.Println()
 			break
 		} else {
 			nonce++
 		}
 	}
-
 	return nonce, hash[:]
 }
 
@@ -62,10 +68,35 @@ func (pow *ProofOfWork) Run() (uint64, []byte) {
 func (pow *ProofOfWork) Validate() bool {
 	var hashInt big.Int
 
-	hash := sha256.Sum256(pow.prepareData(pow.Block.Nonce))
+	hash := sha256.Sum256(
+		pow.prepareData(pow.block.Nonce),
+	)
 	hashInt.SetBytes(hash[:])
 
-	isValid := hashInt.Cmp(pow.Target) == -1
-
+	isValid := hashInt.Cmp(pow.target) == -1
 	return isValid
+}
+
+func (tx Transaction) Serialize() []byte {
+	var writer bytes.Buffer
+
+	enc := gob.NewEncoder(&writer)
+	err := enc.Encode(tx)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	return writer.Bytes()
+}
+
+// HashTransactions hashes transactions
+func (b *Block) HashTransactions() []byte {
+	var transactions [][]byte
+
+	for _, tx := range b.Transactions {
+		transactions = append(transactions, tx.Serialize())
+	}
+	mTree := NewMerkleTree(transactions)
+
+	return mTree.merkleRoot
 }
