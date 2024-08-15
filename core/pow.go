@@ -4,7 +4,9 @@ import (
 	"blockchain/util"
 	"bytes"
 	"crypto/sha256"
+	"encoding/gob"
 	"fmt"
+	"log"
 	"math"
 	"math/big"
 )
@@ -32,6 +34,7 @@ func (pow *ProofOfWork) prepareData(nonce int) []byte {
 			[]byte(pow.block.PrevHash),
 			pow.block.HashTransactions(),
 			util.IntToHex(int64(pow.block.TimeStamp)),
+			util.IntToHex(int64(TargetBits)),
 			util.IntToHex(int64(nonce)),
 		},
 		[]byte{},
@@ -74,14 +77,26 @@ func (pow *ProofOfWork) Validate() bool {
 	return isValid
 }
 
+func (tx Transaction) Serialize() []byte {
+	var writer bytes.Buffer
+
+	enc := gob.NewEncoder(&writer)
+	err := enc.Encode(tx)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	return writer.Bytes()
+}
+
 // HashTransactions hashes transactions
 func (b *Block) HashTransactions() []byte {
-	var txHashes [][]byte
-	var txHash [32]byte
+	var transactions [][]byte
 
 	for _, tx := range b.Transactions {
-		txHashes = append(txHashes, tx.GetHash())
+		transactions = append(transactions, tx.Serialize())
 	}
-	txHash = sha256.Sum256(bytes.Join(txHashes, []byte{}))
-	return txHash[:]
+	mTree := NewMerkleTree(transactions)
+
+	return mTree.merkleRoot
 }

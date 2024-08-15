@@ -413,3 +413,43 @@ func CreateBlockchain(address string) *Blockchain {
 	bc := Blockchain{db, last}
 	return &bc
 }
+
+// FindAllUTXOs finds all unspent transaction outputs
+func (bc *Blockchain) FindAllUTXOs() map[string][]TXOutput {
+	UTXO := make(map[string][]TXOutput)
+	spentTXOs := make(map[string][]int)
+	bcI := bc.Iterator()
+
+	for {
+		block := bcI.getNextBlock()
+
+		for _, tx := range block.Transactions {
+			txID := hex.EncodeToString(tx.ID)
+
+		Outputs:
+			for outIndex, out := range tx.Vout {
+				if spentTXOs[txID] != nil {
+					for _, spentOut := range spentTXOs[txID] {
+						if spentOut == outIndex {
+							continue Outputs
+						}
+					}
+				}
+				UTXO[txID] = append(UTXO[txID], out)
+			}
+
+			if !tx.IsCoinbase() {
+				for _, in := range tx.Vin {
+					inTxID := hex.EncodeToString(in.Txid)
+					spentTXOs[inTxID] = append(spentTXOs[inTxID], in.TxoutIdx)
+				}
+			}
+		}
+
+		if len(block.PrevHash) == 0 {
+			break
+		}
+	}
+
+	return UTXO
+}
