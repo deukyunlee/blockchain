@@ -3,18 +3,12 @@ package main
 import (
 	"blockchain/cli"
 	"blockchain/core"
-	"github.com/boltdb/bolt"
 )
 
 func main() {
 	chain := core.GetBlockchain()
-	defer func(Db *bolt.DB) {
-		err := Db.Close()
-		if err != nil {
+	defer chain.Db.Close()
 
-		}
-	}(chain.Db)
-
-	commandLine := cli.Cli{Bc: chain}
+	commandLine := cli.Cli{chain}
 	commandLine.Active()
 }

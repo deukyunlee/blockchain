@@ -2,24 +2,24 @@ package core
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/gob"
 	"errors"
 	"fmt"
 	"github.com/boltdb/bolt"
 	"github.com/go-playground/validator"
 	"log"
-	"math/big"
 	"strconv"
 	"sync"
 	"time"
 )
 
 type Block struct {
-	TimeStamp time.Time `validate:"required"`
-	Hash      []byte    `validate:"required"`
-	PrevHash  []byte    `validate:"required"`
-	Data      []byte    `validate:"required"`
-	Nonce     uint64    `validate:"required"`
+	TimeStamp int32  `validate:"required"`
+	Hash      []byte `validate:"required"`
+	PrevHash  []byte `validate:"required"`
+	Data      []byte `validate:"required"`
+	Nonce     int    `validate:"min=0"`
 }
 
 type Blockchain struct {
@@ -27,14 +27,28 @@ type Blockchain struct {
 	last []byte
 }
 
-type ProofOfWork struct {
-	Block  *Block
-	Target *big.Int
-}
-
 type BlockchainTmp struct {
 	db          *bolt.DB
 	currentHash []byte
+}
+
+type Transaction struct {
+	ID    []byte
+	Txin  []TXInput
+	Txout []TXOutput
+}
+
+// TXInput is about Transaction Input
+type TXInput struct {
+	Txid      []byte // transaction id
+	TxoutIdx  int    // referenced output index number
+	ScriptSig string // Unlock script
+}
+
+// TXOutput is about Transaction Output
+type TXOutput struct {
+	Value        int    // how much
+	ScriptPubKey string // To public key - Lock script
 }
 
 var bc *Blockchain
@@ -63,29 +77,19 @@ func (bc *Blockchain) validateStructure(newBlock Block) error {
 	return nil
 }
 
-// generateGenesisBlock creates Genesis Block only once
-func generateGenesisBlock() {
-	once.Do(func() {
-		bc = &Blockchain{}
-		bc.AddBlock("Genesis Block")
-		time.Sleep(1 * time.Second)
-	})
-}
-
 // AddBlock gets last block using view function, adds to blocks bucket
 // and updates last bucket
 func (bc *Blockchain) AddBlock(data string) {
-
 	var lastHash []byte
+
 	err := bc.Db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte("blocks"))
 		lastHash = b.Get([]byte("last"))
 
 		return nil
 	})
-
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	newBlock := NewBlock(data, lastHash)
@@ -93,43 +97,25 @@ func (bc *Blockchain) AddBlock(data string) {
 	err = bc.Db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte("blocks"))
 		err := b.Put(newBlock.Hash, newBlock.Serialize())
-
 		if err != nil {
-			log.Fatal(err)
+			log.Panic(err)
 		}
 
 		err = b.Put([]byte("last"), newBlock.Hash)
 		if err != nil {
-			log.Fatal(err)
+			log.Panic(err)
 		}
 
 		bc.last = newBlock.Hash
 
-		log.Println("Sucessfully Added")
+		fmt.Println("Successfully Added")
 
 		return nil
 	})
-
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 }
-
-//// newBlock calculates Hash and create new struct
-//func newBlock(data string, prevHash []byte) *Block {
-//	block := &Block{time.Now(), []byte{}, prevHash, data, InitialNonce}
-//	//newBlock.calculateHash()
-//	pow := NewProofOfWork(block)
-//
-//	block.Nonce, block.Hash = pow.Run()
-//	return block
-//}
-
-//// calculateHash calculates hash using sha256
-//func (b *Block) calculateHash() {
-//	hash := sha256.Sum256([]byte(b.Data + b.PrevHash))
-//	b.Hash = hash[:]
-//}
 
 // GetBlockchain opens BoltDB which is written in file, with mode 0600
 // in order to start a read-write transaction, use DB.Update()
@@ -144,13 +130,12 @@ func GetBlockchain() *Blockchain {
 	if err != nil {
 		log.Fatal(err)
 	}
-
+	// defer db.Close()
 	err = db.Update(func(tx *bolt.Tx) error {
 		bc := tx.Bucket([]byte("blocks"))
 		if bc == nil {
 			genesis := generateGenesis()
-			log.Println("Generate Genesis block")
-
+			fmt.Println("Generate Genesis block")
 			b, err := tx.CreateBucket([]byte("blocks"))
 			if err != nil {
 				return err
@@ -159,61 +144,38 @@ func GetBlockchain() *Blockchain {
 			if err != nil {
 				return err
 			}
-
 			err = b.Put([]byte("last"), genesis.Hash)
 			if err != nil {
 				return err
 			}
-
 			last = genesis.Hash
 		} else {
 			last = bc.Get([]byte("last"))
 		}
 		return nil
 	})
-
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	bc := Blockchain{db, last}
-
 	return &bc
 }
 
-//// getPrevHash returns previous blockHash
-//func (bc *Blockchain) getPrevHash() []byte {
-//	if len(GetBlockchain().Blocks) > 0 {
-//		return GetBlockchain().Blocks[len(GetBlockchain().Blocks)-1].Hash
-//	}
-//	return []byte("First Block")
-//}
-
-//// getBlockNumber returns current blockNo
-//func (bc *Blockchain) getBlockNumber() big.Int {
-//	if len(GetBlockchain().Blocks) > 0 {
-//		prevBlockNo := GetBlockchain().Blocks[len(GetBlockchain().Blocks)-1].Number
-//		var nextBlockNo big.Int
-//		nextBlockNo.Add(&prevBlockNo, big.NewInt(1))
-//		return nextBlockNo
-//	}
-//	return *big.NewInt(1)
-//}
-
 // ShowBlocks shows blockData in Block
-func (bc *Blockchain) ShowBlocks() {
-
+func (bc Blockchain) ShowBlocks() {
 	bcT := bc.Iterator()
 
 	for {
 		block := bcT.getNextBlock()
 		pow := NewProofOfWork(block)
 
-		fmt.Printf("TimeStamp: %v\n", block.TimeStamp)
+		fmt.Printf("TimeStamp: %d\n", block.TimeStamp)
 		fmt.Printf("Data: %s\n", block.Data)
 		fmt.Printf("Hash: %x\n", block.Hash)
 		fmt.Printf("Prev Hash: %x\n", block.PrevHash)
 		fmt.Printf("Nonce: %d\n", block.Nonce)
+
 		fmt.Printf("is Validated: %s\n", strconv.FormatBool(pow.Validate()))
 
 		if len(block.PrevHash) == 0 {
@@ -256,7 +218,7 @@ func (bc *Blockchain) Iterator() *BlockchainTmp {
 
 // NewBlock prepares new block
 func NewBlock(data string, prevHash []byte) *Block {
-	newblock := &Block{time.Now(), nil, prevHash, []byte(data), 0}
+	newblock := &Block{int32(time.Now().Unix()), nil, prevHash, []byte(data), 0}
 	pow := NewProofOfWork(newblock)
 	nonce, hash := pow.Run()
 
@@ -285,4 +247,21 @@ func (bct *BlockchainTmp) getNextBlock() *Block {
 
 func generateGenesis() *Block {
 	return NewBlock("Genesis Block", []byte{})
+}
+
+// GetHash hashes Transaction and returns the hash
+func (tx *Transaction) GetHash() []byte {
+	var writer bytes.Buffer
+	var hash [32]byte
+
+	enc := gob.NewEncoder(&writer)
+
+	err := enc.Encode(tx)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	hash = sha256.Sum256(writer.Bytes())
+
+	return hash[:]
 }
